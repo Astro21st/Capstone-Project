@@ -19,3 +19,28 @@ setup airflow + docker
 
 #Running Airflow
 6. docker compose up
+
+step 2
+setup dbt
+
+#install dbt
+1. pip install dbt-core dbt-postgres
+
+#Initialize
+2. dbt init
+
+#move profiles.yml to weather/
+3. mv /home/codespace/.dbt/profiles.yml weather/
+
+#restart db
+4. docker compose restart db
+
+#shutdown db
+5. docker compose down db
+
+#start db on background
+6 docker compose up db -d
+
+#note
+- dbt show -s "*****" // show model
+- dbt run // run dbt

@@ -8,19 +8,14 @@ from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.utils import timezone
-
 import requests
-
 
 DAG_FOLDER = "/opt/airflow/dags"
 
-
-def _get_weather_data():
-
+def _get_aqi_data():
     API_KEY = Variable.get("air_quality_api_key")
 
     url = 'https://api.airvisual.com/v2/city'
-
     params = {
         'city': 'Bangkok',
         'state': 'Bangkok',
@@ -28,119 +23,113 @@ def _get_weather_data():
         'key': API_KEY
     }
 
-    
     response = requests.get(url, params=params)
     print(response.url)
 
     data = response.json()
-    print(data)
+    print(json.dumps(data, indent=2))
 
-    with open(f"{DAG_FOLDER}/data.json", "w") as f:
+    with open(f"{DAG_FOLDER}/aqi_data.json", "w") as f:
         json.dump(data, f)
 
+def _create_table():
+    pg_hook = PostgresHook(postgres_conn_id="weather_postgres_conn", schema="postgres")
+    connection = pg_hook.get_conn()
+    cursor = connection.cursor()
 
-# def _validate_data():
-#     with open(f"{DAG_FOLDER}/data.json", "r") as f:
-#         data = json.load(f)
+    sql = """
+    CREATE TABLE IF NOT EXISTS aqi_data (
+        ts TIMESTAMP PRIMARY KEY,
+        city TEXT,
+        state TEXT,
+        country TEXT,
+        aqius INTEGER,
+        mainus TEXT,
+        aqicn INTEGER,
+        maincn TEXT,
+        tp FLOAT,
+        pr FLOAT,
+        hu FLOAT,
+        ws FLOAT,
+        wd INTEGER,
+        ic TEXT
+    );
+    """
+    cursor.execute(sql)
+    connection.commit()
 
-#     assert data.get("main") is not None
+def _load_to_postgres():
+    pg_hook = PostgresHook(postgres_conn_id="weather_postgres_conn", schema="postgres")
+    connection = pg_hook.get_conn()
+    cursor = connection.cursor()
 
-# def _validate_temperature_range():
-#     with open(f"{DAG_FOLDER}/data.json", "r") as f:
-#         data = json.load(f)
+    with open(f"{DAG_FOLDER}/aqi_data.json", "r") as f:
+        data = json.load(f)["data"]
 
-#     assert data.get("main").get("temp") >= 20
-#     assert data.get("main").get("temp") <= 45
+    ts = data["current"]["pollution"]["ts"]
+    city = data["city"]
+    state = data["state"]
+    country = data["country"]
+    aqius = data["current"]["pollution"]["aqius"]
+    mainus = data["current"]["pollution"]["mainus"]
+    aqicn = data["current"]["pollution"]["aqicn"]
+    maincn = data["current"]["pollution"]["maincn"]
 
-# def _create_weather_table():
-#     pg_hook = PostgresHook(
-#         postgres_conn_id="weather_postgres_conn",
-#         schema="postgres"
-#     )
-#     connection = pg_hook.get_conn()
-#     cursor = connection.cursor()
+    weather = data["current"]["weather"]
+    tp = weather["tp"]
+    pr = weather["pr"]
+    hu = weather["hu"]
+    ws = weather["ws"]
+    wd = weather["wd"]
+    ic = weather["ic"]
 
-#     sql = """
-#         CREATE TABLE IF NOT EXISTS weathers (
-#             dt BIGINT NOT NULL,
-#             temp FLOAT NOT NULL,
-#             feels_like FLOAT
-#         )
-#     """
-#     cursor.execute(sql)
-#     connection.commit()
-
-
-# def _load_data_to_postgres():
-#     pg_hook = PostgresHook(
-#         postgres_conn_id="weather_postgres_conn",
-#         schema="postgres"
-#     )
-#     connection = pg_hook.get_conn()
-#     cursor = connection.cursor()
-
-#     with open(f"{DAG_FOLDER}/data.json", "r") as f:
-#         data = json.load(f)
-
-#     temp = data["main"]["temp"]
-#     feels_like = data["main"]["feels_like"]
-#     dt = data["dt"]
-#     sql = f"""
-#         INSERT INTO weathers (dt, temp, feels_like) VALUES ({dt}, {temp}, {feels_like})
-#     """
-#     cursor.execute(sql)
-#     connection.commit()
-
+    sql = """
+        INSERT INTO aqi_data (ts, city, state, country, aqius, mainus, aqicn, maincn, tp, pr, hu, ws, wd, ic)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (ts) DO NOTHING;
+    """
+    cursor.execute(sql, (ts, city, state, country, aqius, mainus, aqicn, maincn, tp, pr, hu, ws, wd, ic))
+    connection.commit()
 
 default_args = {
     "email": ["pipe@dpu.team"],
     "retries": 3,
     "retry_delay": timedelta(minutes=1),
 }
+
 with DAG(
-    "capstone_project_dag",
+    "airvisual_aqi_dag",
     default_args=default_args,
-    schedule="0 */3 * * *",
-    start_date=timezone.datetime(2025, 4, 9),
-    tags=["dpu"],
+    schedule="0 */1 * * *",  # Every 3 hours
+    start_date=timezone.datetime(2025, 4, 10, 0, 0),
+    tags=["dpu", "airvisual"],
 ):
+
     start = EmptyOperator(task_id="start")
 
-    get_weather_data = PythonOperator(
-        task_id="get_weather_data",
-        python_callable=_get_weather_data,
+    get_aqi_data = PythonOperator(
+        task_id="get_aqi_data",
+        python_callable=_get_aqi_data,
     )
 
-    # validate_data = PythonOperator(
-    #     task_id="validate_data",
-    #     python_callable=_validate_data,
-    # )
+    create_table = PythonOperator(
+        task_id="create_table",
+        python_callable=_create_table,
+    )
 
-    # validate_temperature_range = PythonOperator(
-    #     task_id="validate_temperature_range",
-    #     python_callable=_validate_temperature_range,
-    # )
+    load_data = PythonOperator(
+        task_id="load_data_to_postgres",
+        python_callable=_load_to_postgres,
+    )
 
-    # create_weather_table = PythonOperator(
-    #     task_id="create_weather_table",
-    #     python_callable=_create_weather_table,
-    # )
-
-    # load_data_to_postgres = PythonOperator(
-    #     task_id="load_data_to_postgres",
-    #     python_callable=_load_data_to_postgres,
-    # )
-
-    # send_email = EmailOperator(
-    #     task_id="send_email",
-    #     to=["pipe@dpu.team"],
-    #     subject="Finished getting open weather data",
-    #     html_content="Done",
-    # )
+    send_email = EmailOperator(
+        task_id="send_email",
+        to=["pipe@dpu.team"],
+        subject="AQI Data Pipeline Finished",
+        html_content="The AirVisual AQI pipeline has successfully run.",
+    )
 
     end = EmptyOperator(task_id="end")
 
-    # start >> get_weather_data >> [validate_data, validate_temperature_range] >> load_data_to_postgres >> send_email
-    # start >> create_weather_table >> load_data_to_postgres
-    # send_email >> end
-    start >> get_weather_data >> end
+    start >> get_aqi_data >> load_data >> send_email >> end
+    start >> create_table >> load_data
