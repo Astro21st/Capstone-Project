@@ -1,3 +1,0 @@
-Capstone Project: Bangkok Air Quality Data Pipeline
-- Objective
-This project aims to build a data pipeline that automatically extracts Air Quality Index (AQI) data for Bangkok from the AirVisual API, transforms the data into a clean and structured format, and loads it into a PostgreSQL database. The pipeline supports daily monitoring of air quality and enables data-driven decision-making through SQL analytics and dashboard-ready models.
