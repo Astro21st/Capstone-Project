@@ -100,8 +100,8 @@ default_args = {
 with DAG(
     "airvisual_aqi_dag",
     default_args=default_args,
-    schedule="0 */1 * * *",  # Every 3 hours
-    start_date=timezone.datetime(2025, 4, 10, 0, 0),
+    schedule="0 */1 * * *",  # Every 1 hours
+    start_date=timezone.datetime(2025, 4, 12, 9, 0),
     tags=["dpu", "airvisual"],
 ):
 

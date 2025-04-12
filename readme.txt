@@ -2,7 +2,7 @@ My name is Chatmongkol Tussabut
 This is my capstone project
 
 step 1
-setup airflow + docker
+setup airflow + docker download code here: https://airflow.apache.org/docs/apache-airflow/2.10.5/docker-compose.yaml
 
 1. create docker-compose.yaml
 
