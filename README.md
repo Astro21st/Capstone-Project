@@ -1,5 +1,5 @@
 # 📍 My Capstone Project
-# Author: Chatmongkol Tussabut 67130069
+# Author: Chatmongkol Tussabut
 
 # 🎓 Capstone Project: Bangkok Air Quality Data Pipeline
 
